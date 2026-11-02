@@ -3,7 +3,7 @@
 # Written by Mara Fischer, based on code written by Williams et al. 2025
 # Contact: m.fischer2@exeter.ac.uk
 
-# Libraries
+# Libraries ----
 library(tidyverse)
 library(patchwork)
 library(mgcv)
@@ -348,11 +348,7 @@ plot(gam1)
 gam.check(gam1)
 visibly::plot_gam_check(gam1)
 
-
-
 gam1_sum <- tidy(gam1)
-
-#write.csv(gam1_sum, "GAM_all_summary.csv")
 
 # Compare models
 # Run different combinations and do backwards stepwise selection to find best model
@@ -415,9 +411,11 @@ AIC_table <- AIC(GAM_1.0, GAM_1.1, GAM_1.2, GAM_1.3,
   arrange(AIC) %>%
   mutate(delta_AIC = AIC - min(AIC))
 
+head(AIC_table, 8)
+
 # GAM 1.1 is best (with interaction term plus scenario)
 
-write.csv(AIC_table, "outputs/GAM_model_selection.csv")
+write.csv(AIC_table, "Outputs/GAM_model_selection.csv")
 
 # Re-fit fnal model with f-reml
 gam1 <- bam(Value_log ~ s(Nsp, by = Scenario, bs = "tp", k = 5) + Scenario,
@@ -430,7 +428,7 @@ visibly::plot_gam_check(gam1)
 
 gam1_sum <- tidy(gam1)
 
-write.csv(gam1_sum, "GAM_all_summary.csv")
+write.csv(gam1_sum, "Outputs/GAM_all_summary.csv")
 
 # Plot GAM curves
 
@@ -526,11 +524,7 @@ summary(curve_comps)
 
 pairs <- as.data.frame(curve_comps$contrasts)
 
-#write.csv(pairs, "GAM_pairwise_scenarios.csv")
-
 slopes <- as.data.frame(curve_comps$emtrends)
-
-#write.csv(slopes, "GAM_scenario_slopes.csv")
 
 # Format into clean table
 
@@ -638,7 +632,7 @@ final_table <- table_df %>%
 # View the finished table in your RStudio viewer
 final_table
 
-gtsave(final_table, filename = "outputs/GAM_scenario_slopes_pairs.docx", format = "docx")
+gtsave(final_table, filename = "Outputs/GAM_scenario_slopes_pairs.docx",  format = "docx")
 
 ## Plot GAM SE ----
 
