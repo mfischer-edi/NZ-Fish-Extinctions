@@ -1,7 +1,5 @@
 # Fish bioturbation extinction modelling
 
-# Irish Sea Fish Bioturbation
-
 This repository contains code and data necessary to replicate data analysis and figures in the manuscript *"Commercial extraction of large, valuable fish disproportionately reduces sediment bioturbation"* by Mara Fischer, Thomas Williams, Martin Solan, Benjamin Harris, Tara Williams, Ceri Lewis, Julie Hawkins, and Callum Roberts.
 
 ## Navigation
