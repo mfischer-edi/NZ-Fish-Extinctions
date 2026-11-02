@@ -17,7 +17,7 @@ R version 4.4.2 or higher
 
 ### Packages
 
-`tidyverse, maps, sf, patchwork, cowplot, vegan, glmmTMB, DHARMa, mgcv, visreg, visibly, emmeans, ggrepel, ggeffects, purr, broom, rnaturalearth, rnaturalearthdata, RColorBrewer, viridis`
+`tidyverse, patchwork, mgcv, visreg, visibly, emmeans, ggh4x`
 
 *Contact: Mara Fischer, m.fischer2@exeter.ac.uk*
 
