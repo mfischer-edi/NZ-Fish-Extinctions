@@ -322,42 +322,10 @@ bpc_spikes <- scenario_means %>%
 
 write.csv(bpc_spikes, "Outputs/BPc_compensation_perc_change.csv")
 
-# Calculate acceleration point for no comp curves
-# when function suddenly drops
-
-# --- 1. CALCULATE SCENARIO MEANS FOR NO-COMPENSATION ---
-no_comp_means <- final_df %>%
-  filter(Comp == "none") %>%
-  group_by(Zone, Driver, Nsp) %>%
-  summarise(Mean_Bpc = mean(Value, na.rm = TRUE), .groups = "drop") %>%
-  arrange(Zone, Driver, desc(Nsp)) # Ensure ordered from high Nsp to low Nsp
-
-# --- 2. CALCULATE THE ACCELERATION OF LOSS AT EACH STEP ---
-steep_drops <- no_comp_means %>%
-  group_by(Zone, Driver) %>%
-  mutate(
-    # 1st Derivative: How much BPc is lost moving to the NEXT lower Nsp?
-    Bpc_Lost = Mean_Bpc - lead(Mean_Bpc),
-    
-    # 2nd Derivative: How much does the loss ACCELERATE compared to the previous step?
-    Loss_Acceleration = Bpc_Lost - lag(Bpc_Lost)
-  ) %>%
-  # Filter out the edge cases (first and last steps won't have lags)
-  filter(!is.na(Loss_Acceleration)) %>%
-  
-  # --- 3. IDENTIFY THE TIPPING POINT ---
-  # Find the exact Nsp where the acceleration of loss is highest
-  summarise(
-    Nsp_Drop_Accelerates = Nsp[which.max(Loss_Acceleration)],
-    Max_Incremental_Loss = max(Bpc_Lost, na.rm = TRUE),
-    .groups = "drop"
-  )
-
 
 #  GAM ----
 
-# model everything in one model with a three-way interaction between
-# richness, protection and scenario
+# one model with a three-way interaction between richness, protection and scenario
 
 # Log BPc for modelling
 final_df$Value_log <- log(final_df$Value)
@@ -386,10 +354,11 @@ gam1_sum <- tidy(gam1)
 #write.csv(gam1_sum, "GAM_all_summary.csv")
 
 # Compare models
+# Run different combinations and do backwards stepwise selection to find best model
+# using maximum restricted likelihood (ML)
 
 GAM_1.0 <- bam(Value_log ~ s(Nsp, by = Scenario, bs = "tp", k = 5) + s(Nsp, bs = "tp", k = 5) + Scenario,
                data = final_df, method = "ML") 
-# including k = 5 causes the model to not converge properly...
 GAM_1.0_summary <- summary(GAM_1.0)
 
 GAM_1.1 <- bam(Value_log ~ s(Nsp, by = Scenario, bs = "tp", k = 5) + Scenario,
@@ -436,47 +405,20 @@ model_summaries <- list(GAM_1.0_summary,
                         GAM_1.6_summary, 
                         GAM_1.7_summary)
 
-AIC_scores <- AIC(GAM_1.0, GAM_1.1, GAM_1.2, GAM_1.3, GAM_1.4, GAM_1.5, GAM_1.6, GAM_1.7)
-
-# Create an empty data frame to store model information
-model_info <- tibble(
-  response_variable = character(),
-  terms = character(),
-  n = integer(),
-  aic = numeric(),
-  r_squared = numeric(),
-  ML_smoothing_criterion = numeric()
-)
-
-for(i in 1:length(model_summaries)){
-  # Extract information from the current model summary
-  response_variable <- as.character(model_summaries[[i]]$formula)[[2]]
-  terms <- as.character(model_summaries[[i]]$formula)[[3]]
-  n <- model_summaries[[i]]$n
-  aic <- AIC_scores$AIC[[i]]
-  r_squared <- model_summaries[[i]]$r.sq
-  ML_smoothing_criterion <- model_summaries[[i]]$sp.criterion["ML"][[1]]
-  
-  # Append the extracted information to the model_info data frame
-  model_info <- model_info %>%
-    add_row(
-      response_variable = response_variable,
-      terms = terms,
-      n = n,
-      aic = aic,
-      r_squared = r_squared,
-      ML_smoothing_criterion = ML_smoothing_criterion
-    )
-}
-
-model_info <- model_info %>% 
-  arrange(aic)
+AIC_table <- AIC(GAM_1.0, GAM_1.1, GAM_1.2, GAM_1.3,
+                 GAM_1.4, GAM_1.5, GAM_1.6, GAM_1.7) %>%
+  mutate(
+    R2 = sapply(model_summaries, function(x) x$r.sq),
+    Deviance_explained = sapply(model_summaries, function(x) x$dev.expl)
+  ) %>%
+  arrange(AIC) %>%
+  mutate(delta_AIC = AIC - min(AIC))
 
 # GAM 1.1 is best (with interaction term plus scenario)
 
-write.csv(model_info, "GAM_model_selection.csv")
+write.csv(AIC_table, "outputs/GAM_model_selection.csv")
 
-# Re-fit with f-reml
+# Re-fit fnal model with f-reml
 gam1 <- bam(Value_log ~ s(Nsp, by = Scenario, bs = "tp", k = 5) + Scenario,
             data = final_df, method = "fREML")
 
