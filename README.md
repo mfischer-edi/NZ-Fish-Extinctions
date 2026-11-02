@@ -27,7 +27,7 @@ Key columns:
 
 *SAU_catch_value_data.csv* - Raw landed commercial value data from the Sea Around Us Catch database
 
-- [Outputs](https://github.com/mfischer-edi/Irish-Sea-bioturbation/tree/main/outputs): Contains outputs (model summaries and figures) produced by running the script.
+- [Outputs]([(https://github.com/mfischer-edi/NZ-Fish-Extinctions/tree/main/Outputs)]): Contains outputs (model summaries and figures) produced by running the script.
 
 ## Requirements
 
