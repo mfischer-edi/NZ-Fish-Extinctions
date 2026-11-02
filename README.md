@@ -2,6 +2,8 @@
 
 This repository contains code and data necessary to replicate data analysis and figures in the manuscript *"Commercial extraction of large, valuable fish disproportionately reduces sediment bioturbation"* by Mara Fischer, Thomas Williams, Martin Solan, Benjamin Harris, Tara Williams, Ceri Lewis, Julie Hawkins, and Callum Roberts.
 
+The data were collected in November and December 2024 in the Hauraki Gulf, New Zealand using baited remote underwater video systems (BRUVS).
+
 ## Navigation
 
 - [Code](https://github.com/mfischer-edi/Irish-Sea-bioturbation/tree/main/code): Contains script to prepare the data, run extinction models, and plot figures.
