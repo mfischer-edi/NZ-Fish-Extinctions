@@ -12,6 +12,7 @@ library(ggh4x)
 library(emmeans)
 library(broom)
 library(tidytext)
+library(gt)
 
 # Starting dataframe ----
 
@@ -509,37 +510,29 @@ PREDmega$RowLabel <- "Extinctions ordered by:"
     )
 )
 
-# I get pretty much the same curves I got from running individual models!
-
-
-ggsave(GAM_mega_facet, filename = "outputs/extinctions/GAMs_mega_facet.png", 
-       width = 7, height = 6, dpi = 600)
-
 # Pairwise comparisons ----
 
 # with emmeans
 
-# Compare the trends (curves) of your scenarios
+# Compare the trends (curves) of the scenarios
 # This calculates whether the derivatives/slopes of the curves differ pairwise
+
 curve_comps <- emtrends(gam1, pairwise ~ Scenario, var = "Nsp")
 
-# View the pairwise tests (look for your specific pairs, e.g., protected vs unprotected)
+# View the pairwise tests (look for specific pairs we are interested in, e.g., protected vs unprotected)
 summary(curve_comps$contrasts)
 
 summary(curve_comps)
 
 pairs <- as.data.frame(curve_comps$contrasts)
 
-write.csv(pairs, "GAM_pairwise_scenarios.csv")
+#write.csv(pairs, "GAM_pairwise_scenarios.csv")
 
 slopes <- as.data.frame(curve_comps$emtrends)
 
-write.csv(slopes, "GAM_scenario_slopes.csv")
+#write.csv(slopes, "GAM_scenario_slopes.csv")
 
 # Format into clean table
-
-#install.packages("gt")
-library(gt)
 
 # 1. Convert the emtrends objects to normal dataframes
 trends_df <- as.data.frame(curve_comps$emtrends)
@@ -560,8 +553,8 @@ table_data <- trends_clean %>%
     values_from = Trend_SE
   )
 
-# 4. Isolate the specific protected vs unprotected contrasts you care about
-# (Filtering your giant contrast matrix down to just the 8 main comparisons)
+# 4. Isolate the specific protected vs unprotected contrasts we care about
+# (Filtering giant contrast matrix down to just the 8 main comparisons)
 just_main_contrasts <- contrasts_df %>%
   filter(stringr::str_detect(contrast, "protected\\.(.*) - unprotected\\.\\1")) %>%
   separate(contrast, into = c("Prot", "Unprot"), sep = " - ") %>%
@@ -572,7 +565,7 @@ just_main_contrasts <- contrasts_df %>%
 # 5. Merge them together into one master data frame
 table_df <- left_join(table_data, just_main_contrasts, by = "Combined_Scenario")
 
-# Create the publication-ready table
+# Create the final table
 final_table <- table_df %>%
   gt() %>%
   
@@ -592,7 +585,7 @@ final_table <- table_df %>%
     fn = function(x) stringr::str_remove(x, "\\..*")
   ) %>%
   
-  # Rename the columns professionally
+  # Rename the columns
   cols_label(
     Combined_Scenario = "Extinction driver",
     protected = "Slope ± SE",
@@ -609,10 +602,10 @@ final_table <- table_df %>%
   # Format numbers to 3 decimal places
   fmt_number(columns = c(estimate, t.ratio), decimals = 3) %>%
   
-  # FIX FOR OLDER GT: Format the p-values to 3 decimal places
+  # Format the p-values to 3 decimal places
   fmt_number(columns = p.value, decimals = 3) %>%
   
-  # Automatically convert 0.000 into "< 0.001" for publication standards
+  # Automatically convert 0.000 into "< 0.001"
   text_transform(
     locations = cells_body(columns = p.value),
     fn = function(x) {
@@ -620,7 +613,7 @@ final_table <- table_df %>%
     }
   ) %>%
   
-  # Stylistic formatting: Bold the significant p-values automatically!
+  # Stylistic formatting: Bold the significant p-values automatically
   # (Accounts for both numeric values less than 0.05 and the new "< 0.001" string)
   tab_style(
     style = cell_text(weight = "bold"),
@@ -645,7 +638,7 @@ final_table <- table_df %>%
 # View the finished table in your RStudio viewer
 final_table
 
-gtsave(final_table, filename = "GAM_scenario_slopes_pairs.docx", format = "docx")
+gtsave(final_table, filename = "outputs/GAM_scenario_slopes_pairs.docx", format = "docx")
 
 ## Plot GAM SE ----
 
