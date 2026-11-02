@@ -675,7 +675,7 @@ label_df2 <- PREDmega %>%
     )
 )
 
-ggsave(se_plots, filename = "outputs/GAM_se_plot.png", width = 8, height = 6, dpi = 600)
+ggsave(se_plots, filename = "Outputs/GAM_se_plot.png", width = 8, height = 6, dpi = 600)
 
 
 # Plot extinction curves ----
@@ -692,7 +692,7 @@ final_df$Driver <- factor(final_df$Driver, levels = c("random", "size", "rarity"
 
 final_df$RowLabel <- "Extinctions ordered by:"
 
-# Create label_df by borrowing the structure of your existing data
+# Create label_df by borrowing the structure of existing data
 label_df <- final_df %>%
   group_by(RowLabel, Driver, Comp_label, Prot) %>%
   summarize(.groups = "drop") %>% # This gets 1 unique row per panel
@@ -711,7 +711,7 @@ label_df <- final_df %>%
                    geom = 'polygon', 
                    h = c(3, 0.3)
     ) +
-    # Add GAM lines from mega GAM with all scenarios
+    # Add GAM lines
     geom_line(data = PREDmega, aes(x = Nsp, y = fit), 
               inherit.aes = F, colour = "gold", 
               #linetype = "dashed", 
@@ -742,11 +742,7 @@ label_df <- final_df %>%
     labs(x = "Species Richness", y = "log(BPc)")
 )
 
-#ggsave(ext_plots, filename = "outputs/extinctions/extinction_curves_final.png",
- #      width = 7, height = 6, dpi = 300)
-
-# With GAM lines
-ggsave(ext_plots, filename = "outputs/extinctions/extinction_curves_all_GAMs.png",
+ggsave(ext_plots, filename = "Outputs/extinction_curves_GAMs.png",
        width = 7, height = 6, dpi = 300)
 
 # Taxonomy plots ----
@@ -882,5 +878,5 @@ final_plot <- wrap_plots(plot_list, ncol = 4, guides = "collect", axes = "collec
 
 final_plot
 
-ggsave(final_plot, filename = "outputs/all_taxonomy_plots.png",
+ggsave(final_plot, filename = "Outputs/all_taxonomy_plots.png",
        width = 8, height = 6, dpi = 300)
