@@ -1,6 +1,7 @@
 # Fish bioturbation extinction modelling
 # April 2026
 # Written by Mara Fischer, based on code written by Williams et al. 2025
+# Contact: m.fischer2@exeter.ac.uk
 
 # Libraries
 library(tidyverse)
@@ -9,22 +10,32 @@ library(mgcv)
 library(visreg)
 library(ggh4x)
 library(emmeans)
+library(broom)
+library(tidytext)
 
 # Starting dataframe ----
 
-# one row per species per deployment (species presence only)
+data <- read.csv("fish_maxn_biomass.csv")
 
-data <- read.csv("data/fish_maxn_biomass.csv")
+# Raw BRUVS data from Hauraki Gulf
+# one row per species per deployment
 
-# Load trophic level data with common names:
-common <- read.csv("data/trophic_level.csv")
-
-common <- common %>% 
-  dplyr::select(binomial, common.name)
+# Key columns:
+## OpCode: Unique identifier of deployment
+## MaxN: Relative abundance (the maximum number of individuals of each species present in a single video frame)
+## binomial: scientific species name
+## Site: Survey site
+## Deployment: replicate deployment number per site
+## CPA.status: protection status (sites are either inside a cable protection area and therefore protected or outside of it and therefore unprotected)
+## bioturbation.mode: Sediment reworking mode assigned after Fischer et al. (2025)'s classification system
+## bioturbation.mode.score: categorical score assigned to bioturbation mode, reflecting the increasing influence on sediment turnover
+## bioturbation.frequency: frequency of sediment reworking
+## bioturbation.frequency.score: categorical score assigned to bioturbation frequency, reflecting increasing frequency of interaction with the sediment
+## biomass.g: biomass of species at MaxN, calculated using allometric length-weight relationships
 
 # tidy
 data <- data %>% 
-  dplyr::select(OpCode, Site, Deployment, CPA.status, binomial, bioturbation.mode,
+  dplyr::select(OpCode, Site, Deployment, CPA.status, binomial, common.name, bioturbation.mode,
                 bioturbation.mode.score, bioturbation.frequency, bioturbation.frequency.score,
                 MaxN, biomass.g) %>% 
   rename(Abundance = MaxN, Biomass = biomass.g, Prot = CPA.status,
@@ -42,7 +53,7 @@ unique(data$binomial)
 
 # Data prep ----
 
-# aggregate across all deployments from the same site directly
+# aggregate across all deployments from the same site
 
 ## Calculate mean and total abundance and biomass
 prot_mean <- data %>%
@@ -69,7 +80,7 @@ richness <- data %>%
 # good indicator of value as the financial gains from catch when it is landed is primary motivator for fishers to go fishing
 # rather than using export value
 
-SAU <- read.csv("data/SAU_catch_value_data.csv", header = T)
+SAU <- read.csv("SAU_catch_value_data.csv", header = T)
 
 (unique(SAU$scientific_name)) # 217
 unique(SAU$year) # 1950-2019
@@ -82,15 +93,21 @@ length(unique(sau19$scientific_name)) # 190
 unique(sau19$scientific_name)
 
 sau_spp <- sau19 %>% 
+  filter(scientific_name %in% data$binomial)
+
+unique(sau_spp$scientific_name) # 11
+
+# missing species: Dipturus innominatus, Tetronarce nobiliana, Pseudocaranx georgianus,
+# Caesioperca lepidoptera, Bodianus unimaculatus
+
+# Pseudocaranx georgianus is under P. dentex, so include that
+# use Rajidae value for Dipturus innominatus as they are exploited
+# for all other species that are not commercially exploited, add a nominal baseline value of $0.1 USD. 
+
+sau_spp <- sau19 %>% 
   filter(scientific_name %in% data$binomial | scientific_name == "Pseudocaranx dentex" | scientific_name == "Rajidae")
 
 unique(sau_spp$scientific_name) # 13
-
-# missing species: Dipturus innominatus, Tetronarce nobiliana, Pseudocaranx georgianus (this might be under dentex),
-# Caesioperca lepidoptera, Bodianus unimaculatus
-
-#  Pseudocaranx georgianus is under P. dentex, so include that
-# how to treat the other missing species? Value of 0 as they are of no commercial interest?
 
 # aggregate
 spp_value <- sau_spp %>% 
@@ -245,13 +262,16 @@ for (i in 1:nrow(scenarios)) {
   
 }
 
-# Combine all scenarios into one massive dataframe
+# Combine all scenarios into one dataframe
 final_df <- bind_rows(all_results)
 
 str(final_df)
 
 final_df$Comp <- factor(final_df$Comp, levels = c("none", "functional"))
 final_df$Driver <- factor(final_df$Driver, levels = c("random", "size", "rarity", "value"))
+
+final_df <- final_df %>% 
+  mutate(Prot = if_else(Zone == "inside", "protected", "unprotected"))
 
 ## Sort species contribution data
 
@@ -297,7 +317,7 @@ bpc_spikes <- scenario_means %>%
   # and sort by the largest spike
   arrange(desc(Max_Pct_Increase))
 
-write.csv(bpc_spikes, "BPc_comp_perc_ch.csv")
+#write.csv(bpc_spikes, "BPc_comp_perc_ch.csv")
 
 # Calculate acceleration point for no comp curves
 # when function suddenly drops
@@ -356,11 +376,11 @@ plot(gam1)
 gam.check(gam1)
 visibly::plot_gam_check(gam1)
 
-library(broom)
+
 
 gam1_sum <- tidy(gam1)
 
-write.csv(gam1_sum, "GAM_all_summary.csv")
+#write.csv(gam1_sum, "GAM_all_summary.csv")
 
 # Compare models
 
@@ -799,21 +819,70 @@ ggsave(ext_plots, filename = "outputs/extinctions/extinction_curves_all_GAMs.png
 
 # Taxonomy plots ----
 
-# --- STEP 1: Define your specific vlines ---
-# Make sure the names match your Zone/Comp/Driver columns exactly
+# Prepare heatmap dataframe:
+
+# 1. Calculate Relative Contribution (%) 
+# Group by Scenario and Nsp so the percentages in each vertical column add to 100
+heatmap_df <- heatmap_df %>%
+  group_by(Zone, Driver, Comp, Nsp) %>%
+  mutate(RelCont = (MeanBPi / sum(MeanBPi)) * 100) %>%
+  ungroup()
+
+# 2. Apply "Capping" logic
+# This prevents the dominant species (>20%) from washing out the smaller ones
+heatmap_df <- heatmap_df %>%
+  mutate(HeatValue = ifelse(RelCont > 20, 20, RelCont))
+
+# 3. Fix factors for consistent plotting order
+heatmap_df$Comp <- factor(heatmap_df$Comp, levels = c("none", "functional"))
+heatmap_df$Driver <- factor(heatmap_df$Driver, levels = c("random", "size", "rarity", "value"))
+
+# 4. Clean up NAs and the >20% cap
+heatmap_df <- heatmap_df %>%
+  mutate(
+    # If RelCont is NaN or NA (because sum was 0), make it 0
+    RelCont = ifelse(is.nan(RelCont) | is.na(RelCont), 0, RelCont),
+    # RE-APPLY CAP: Ensure it's numeric and explicitly capped
+    HeatValue = pmin(RelCont, 20) 
+  )
+
+# 5. Calculate the rank for each species WITHIN each scenario
+heatmap_df <- heatmap_df %>%
+  group_by(Zone, Driver, Comp) %>%
+  # Find the contribution at the start (Max Nsp) to determine the order
+  mutate(StartCont = RelCont[Nsp == max(Nsp)][match(Species, Species[Nsp == max(Nsp)])]) %>%
+  # Rank them (1 = highest contributor)
+  mutate(Rank = dense_rank(desc(StartCont))) %>%
+  ungroup()
+
+# 6. Fix the Cap and NAs
+heatmap_df <- heatmap_df %>%
+  mutate(
+    RelCont = replace_na(RelCont, 0),
+    HeatValue = pmin(RelCont, 20)
+  )
+
+# 7. Define specific vlines 
+# Make sure the names match Zone/Comp/Driver columns exactly
 vline_df <- data.frame(
-  #Zone = rep(c("inside", "outside"), 2),
   Prot = rep(c("protected", "unprotected"), 2),
   Comp = rep(c("none", "functional"), each = 2),
   intercept = c(10, 8) # Example values
 )
 
-# Add common names for plotting
+# 8. Add common names for plotting
+
+common <- data %>% 
+  select(common.name, binomial) %>% 
+  distinct(common.name, binomial)
+  
 heatmap_df <- heatmap_df %>% 
   left_join(common, by = c("Species" = "binomial"))
 
-# --- STEP 2: The Plotting Function ---
-# This creates ONE of your 16 panels exactly how you want it
+head(heatmap_df)
+
+# 9. The Plotting Function
+# This creates one out of the 16 panels
 make_mini_plot <- function(z, d, c, plot_tag) {
   
   # Filter data for this specific panel
@@ -822,10 +891,10 @@ make_mini_plot <- function(z, d, c, plot_tag) {
     mutate(Prot = if_else(Zone == "inside", "protected", "unprotected"),
            common.name = reorder(common.name, StartCont)) # Order by starting contribution
   
-  # Get the specific Prot string for THIS plot to find the vline
+  # Get the specific Prot string for This plot to find the vline
   current_prot <- if_else(z == "inside", "protected", "unprotected")
   
-  # Look up the line using 'Prot' instead of 'Zone'
+  # Look up the line using 'Prot'
   this_vline <- vline_df %>% 
     filter(Prot == current_prot, Comp == c) %>% 
     pull(intercept)
@@ -839,15 +908,12 @@ make_mini_plot <- function(z, d, c, plot_tag) {
                         limits = c(0, 20), 
                         breaks = c(0, 5, 10, 15, 20),
                         labels = c("0", "5", "10", "15", ">20%"),
-                        #na.value = "grey60",
-                        #oob = scales::force_all_na,
                         name =  "Contribution \nto BPc (%)") +
     annotate("text", x = Inf, y = -Inf, label = plot_tag, 
-             hjust = 1.5, vjust = -1, # Adjust these to nudge the text
+             hjust = 1.5, vjust = -1, 
              fontface = "bold", size = 4) +
     theme_minimal() +
     theme(
-      #legend.position = "bottom",
       axis.text.y = element_text(size = 6),
       panel.grid = element_blank(),
       axis.title.y = element_blank(),
@@ -856,13 +922,11 @@ make_mini_plot <- function(z, d, c, plot_tag) {
       legend.title = element_text(size = 8),
       plot.tag = element_text(face = "bold", size = 10)
     ) +
-    labs(#title = paste(current_prot, c, d, sep = " | "), 
-      #tag = plot_tag,
-      x = "Species richness")
+    labs(x = "Species richness")
 }
 
-# --- STEP 3: Create the list of 16 plots ---
-# This loop goes through every combination of your variables
+# 10: Create the list of 16 plots
+# This loop goes through every combination of variables
 plot_list <- list()
 counter <- 1
 
@@ -880,26 +944,11 @@ for (d in levels(heatmap_df$Driver)) {
   }
 }
 
-# --- STEP 4: Assemble with patchwork ---
+# 11: Assemble with patchwork ---
 # This creates the 4x4 grid (4 columns = 2 Comp x 2 Zone)
 final_plot <- wrap_plots(plot_list, ncol = 4, guides = "collect", axes = "collect") 
-#&  theme(legend.position = "right")
+
 final_plot
 
-ggsave(final_plot, filename = "outputs/extinctions/all_taxonomy_plots.png",
+ggsave(final_plot, filename = "outputs/all_taxonomy_plots.png",
        width = 8, height = 6, dpi = 300)
-
-ggsave(
-  filename = "outputs/extinctions/final_taxonomy_grid.tiff",
-  plot = final_plot,
-  # width = 11,           # Landscape A4-ish width
-  #height = 11,          # Tall enough for 4 rows of species names
-  #units = "in",
-  width = 30,
-  height = 18,
-  units = c("cm"),
-  dpi = 600,            # Standard for high-quality publication
-  compression = "lzw",  # IMPORTANT: Makes the file size 10x smaller without losing quality
-  bg = "white"
-)
-
