@@ -16,7 +16,7 @@ library(gt)
 
 # Starting dataframe ----
 
-data <- read.csv("fish_maxn_biomass.csv")
+data <- read.csv("NZ24_fish_data.csv")
 
 # Raw BRUVS data from Hauraki Gulf
 # one row per species per deployment
@@ -681,7 +681,7 @@ label_df2 <- PREDmega %>%
     )
 )
 
-ggsave(se_plots, filename = "outputs/extinctions/GAM_se_plots_final.png", width = 8, height = 6, dpi = 600)
+ggsave(se_plots, filename = "outputs/GAM_se_plot.png", width = 8, height = 6, dpi = 600)
 
 
 # Plot extinction curves ----
