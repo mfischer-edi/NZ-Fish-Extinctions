@@ -137,7 +137,12 @@ prot_mean$kg_value[is.na(prot_mean$kg_value)] <- 0.1
 
 # Run simulations ----
 
-## Master loop to run all scenarios
+## First we define the extinction scenarios.
+## The code then runs through each scenario and simulates the sequential loss of species
+## after species (ordered by the different vulnerabilities defined below). Each time as species
+## is lost, a revised BPc is calculated, and if functional compensation is allowed, 
+## a species from the same bioturbation mode is randomly chosen to compensate for lost biomass.
+
 
 # --- 1. DEFINE SCENARIO MATRIX ---
 # This creates the 15 valid combinations
@@ -167,7 +172,6 @@ for (i in 1:nrow(scenarios)) {
   
   # STEP A: Prepare sim_data for this zone
   # (Assumes 'prot_mean' has both 'inside' and 'outside' data)
-  # UPDATE INPUT DATAFRAME DEPENDING ON HOW MEANS WERE CALCULATED
   temp_sim_data <- prot_mean %>%
     filter(Prot == current_zone, Ai > 0) 
   
@@ -176,10 +180,10 @@ for (i in 1:nrow(scenarios)) {
     # Body size (largest first)
     temp_sim_data$ExtinctProb <- temp_sim_data$Bind / sum(temp_sim_data$Bind)
   } else if (current_driver == "rarity") {
-    # Inverse of abundance (1/Ai)
+    # Rarity: Inverse of abundance (1/Ai)
     temp_sim_data$ExtinctProb <- (1/temp_sim_data$Ai) / sum(1/temp_sim_data$Ai)
   } else if (current_driver == "value") {
-    # Economic value (highest value first)
+    # Commercial value (highest value first)
     temp_sim_data$ExtinctProb <- temp_sim_data$kg_value / sum(temp_sim_data$kg_value)
   } else {
     # Random (Flat probability)
@@ -202,49 +206,49 @@ for (i in 1:nrow(scenarios)) {
   active_count_sum <- data.frame(Nsp = nsp:1, TotalActiveCount = 0)
   
   for (sim_count in 1:nsims) {
-    reef <- temp_sim_data
-    reef$AiSim <- reef$Ai
-    reef$EPSim <- reef$ExtinctProb
+    sim_data <- temp_sim_data
+    sim_data$AiSim <- sim_data$Ai
+    sim_data$EPSim <- sim_data$ExtinctProb
     
     for (n in nsp:1) {
       # 1. Calculate Function
-      current_bpc <- sum(reef$AiSim * (sqrt(reef$Bind) * reef$Mi * reef$Fi), na.rm = T)
+      current_bpc <- sum(sim_data$AiSim * (sqrt(sim_data$Bind) * sim_data$Mi * sim_data$Fi), na.rm = T)
       output[output$Simulation == sim_count & output$Nsp == n, "Value"] <- current_bpc
       
-      # 2. Pick Victim
-      if (sum(reef$EPSim, na.rm = T) == 0) break
-      extinct_idx <- which(cumsum(reef$EPSim) >= runif(1))[1]
-      lost_biomass <- reef$AiSim[extinct_idx] * reef$Bind[extinct_idx]
-      victim_mode  <- reef$Mode[extinct_idx]
-      victim_name  <- reef$binomial[extinct_idx]
+      # 2. Pick species to go extinct
+      if (sum(sim_data$EPSim, na.rm = T) == 0) break
+      extinct_idx <- which(cumsum(sim_data$EPSim) >= runif(1))[1]
+      lost_biomass <- sim_data$AiSim[extinct_idx] * sim_data$Bind[extinct_idx]
+      extinct_mode  <- sim_data$Mode[extinct_idx]
+      extinct_name  <- sim_data$binomial[extinct_idx]
       
       # 3. Compensation
       if (current_comp == "functional") {
-        # Pick ONE random survivor in the same guild
-        candidates <- which(reef$Mode == victim_mode & reef$AiSim > 0 & reef$binomial != victim_name)
+        # Pick one random survivor in the same bioturbation mode
+        candidates <- which(sim_data$Mode == extinct_mode & sim_data$AiSim > 0 & sim_data$binomial != extinct_name)
         
         if (length(candidates) > 0) {
           # Randomly select one index from candidates
           comp_idx <- if(length(candidates) > 1) sample(candidates, 1) else candidates
           # Compensate biomass (Round to nearest whole fish)
-          reef$AiSim[comp_idx] <- reef$AiSim[comp_idx] + round(lost_biomass / reef$Bind[comp_idx])
+          sim_data$AiSim[comp_idx] <- sim_data$AiSim[comp_idx] + round(lost_biomass / sim_data$Bind[comp_idx])
         }
-        reef$AiSim[extinct_idx] <- 0
+        sim_data$AiSim[extinct_idx] <- 0
         
       } else { 
         # NONE
-        reef$AiSim[extinct_idx] <- 0
+        sim_data$AiSim[extinct_idx] <- 0
       }
       
       # Record current contribution
-      current_BPi <- reef$AiSim * (sqrt(reef$Bind) * reef$Mi * reef$Fi)
+      current_BPi <- sim_data$AiSim * (sqrt(sim_data$Bind) * sim_data$Mi * sim_data$Fi)
       # Update the specific rows in rolling_sum where Nsp == n
       rolling_sum$SumBPi[rolling_sum$Nsp == n] <- rolling_sum$SumBPi[rolling_sum$Nsp == n] + current_BPi
       
       
       # 4. Cleanup for next step
-      reef$EPSim[extinct_idx] <- 0
-      if (sum(reef$EPSim, na.rm = T) > 0) reef$EPSim <- reef$EPSim / sum(reef$EPSim, na.rm = T)
+      sim_data$EPSim[extinct_idx] <- 0
+      if (sum(sim_data$EPSim, na.rm = T) > 0) sim_data$EPSim <- sim_data$EPSim / sum(sim_data$EPSim, na.rm = T)
     }
   }
   
@@ -279,7 +283,6 @@ final_df <- final_df %>%
 heatmap_df <- bind_rows(all_contributions)
 
 count_df <- bind_rows(all_counts)
-
 
 # Calculate max BPc and tipping points per scenario ----
 
@@ -317,7 +320,7 @@ bpc_spikes <- scenario_means %>%
   # and sort by the largest spike
   arrange(desc(Max_Pct_Increase))
 
-#write.csv(bpc_spikes, "BPc_comp_perc_ch.csv")
+write.csv(bpc_spikes, "Outputs/BPc_compensation_perc_change.csv")
 
 # Calculate acceleration point for no comp curves
 # when function suddenly drops
